@@ -13,7 +13,8 @@ import {
   TrendingDown,
   Trash2,
   Palette,
-  Ruler
+  Ruler,
+  Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +78,8 @@ export default function ProductDetailsPage() {
     product?.discounted_price,
     product?.has_tiered_pricing
   );
+
+  const minQuantity = priceTiers.length > 0 && product?.has_tiered_pricing ? priceTiers[0].min_quantity : 1;
 
   useEffect(() => {
     setShareSupported(!!navigator.share && window.isSecureContext);
@@ -197,9 +200,11 @@ export default function ProductDetailsPage() {
   }, [productId]);
 
   useEffect(() => {
-    if (priceTiers.length > 0 && product?.has_tiered_pricing && quantity === 1) {
+    if (priceTiers.length > 0 && product?.has_tiered_pricing) {
       const minTierQuantity = priceTiers[0].min_quantity;
-      setQuantity(minTierQuantity);
+      if (quantity < minTierQuantity) {
+        setQuantity(minTierQuantity);
+      }
     }
   }, [priceTiers, product?.has_tiered_pricing]);
 
@@ -571,6 +576,81 @@ export default function ProductDetailsPage() {
               {/* Quick Selection Section */}
               {isAvailable && hasPrice && (
                 <div className="mt-8 space-y-6">
+                  {/* Quantity Selector - Only for non-tiered pricing */}
+                  {!product.has_tiered_pricing && (
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm">Quantidade</CardTitle>
+                        <CardDescription className="text-xs">Selecione a quantidade desejada</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex items-center gap-3 justify-center">
+                          <Button
+                            size="lg"
+                            variant="outline"
+                            onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                            disabled={quantity <= 1}
+                          >
+                            <Minus className="h-5 w-5" />
+                          </Button>
+                          <span className="text-2xl font-semibold w-16 text-center">
+                            {quantity}
+                          </span>
+                          <Button
+                            size="lg"
+                            variant="outline"
+                            onClick={() => setQuantity(quantity + 1)}
+                          >
+                            <Plus className="h-5 w-5" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Tiered Pricing Indicator */}
+                  {product.has_tiered_pricing && priceTiers.length > 0 && (() => {
+                    const pricingInfo = (() => {
+                      const basePrice = product.discounted_price || product.price;
+                      const sortedTiers = [...priceTiers].sort((a, b) => a.min_quantity - b.min_quantity);
+                      const applicableTier = sortedTiers
+                        .filter(tier => quantity >= tier.min_quantity && (!tier.max_quantity || quantity <= tier.max_quantity))
+                        .pop();
+                      const unitPrice = applicableTier
+                        ? (applicableTier.discounted_unit_price || applicableTier.unit_price)
+                        : basePrice;
+                      const totalPrice = unitPrice * quantity;
+                      const baseTotalPrice = basePrice * quantity;
+                      const savings = baseTotalPrice - totalPrice;
+                      const nextTier = sortedTiers.find(tier => tier.min_quantity > quantity) || null;
+                      let nextTierSavings = 0;
+                      if (nextTier) {
+                        const nextTierUnitPrice = nextTier.discounted_unit_price || nextTier.unit_price;
+                        const nextTierTotalPrice = nextTierUnitPrice * nextTier.min_quantity;
+                        const baseTotalAtNextTier = basePrice * nextTier.min_quantity;
+                        nextTierSavings = baseTotalAtNextTier - nextTierTotalPrice;
+                      }
+                      return {
+                        unitPrice,
+                        totalPrice,
+                        savings,
+                        nextTier: nextTier ? { quantity: nextTier.min_quantity } : null,
+                        nextTierSavings
+                      };
+                    })();
+
+                    return (
+                      <TieredPricingIndicator
+                        currentQuantity={quantity}
+                        nextTierQuantity={pricingInfo.nextTier?.quantity || 0}
+                        nextTierSavings={pricingInfo.nextTierSavings}
+                        appliedTierSavings={pricingInfo.savings}
+                        currency={currency}
+                        language={language}
+                      />
+                    );
+                  })()}
+
                   {/* Quick Tier Selector */}
                   {product.has_tiered_pricing && priceTiers.length > 0 && (
                     <Card className="border-blue-200 dark:border-blue-800">
@@ -611,6 +691,36 @@ export default function ProductDetailsPage() {
                               </Button>
                             );
                           })}
+                        </div>
+
+                        {/* Custom Quantity Input for tiered pricing */}
+                        <div className="mt-4 pt-4 border-t">
+                          <Label className="text-xs font-medium mb-2 block">Quantidade Personalizada</Label>
+                          <div className="flex items-center gap-3 justify-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setQuantity(Math.max(minQuantity, quantity - 1))}
+                              disabled={quantity <= minQuantity}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            <span className="text-lg font-semibold w-12 text-center">
+                              {quantity}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setQuantity(quantity + 1)}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          {quantity < minQuantity && (
+                            <p className="text-xs text-amber-600 mt-2 text-center">
+                              Quantidade mínima: {minQuantity}
+                            </p>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -811,18 +921,66 @@ export default function ProductDetailsPage() {
                     </Card>
                   )}
 
-                  {/* Total Price */}
-                  <div className="flex justify-between items-center p-4 bg-muted rounded-lg">
-                    <span className="text-lg font-medium">Total:</span>
-                    <span className="text-2xl font-bold text-primary">
-                      {(() => {
-                        const unitPrice = product.has_tiered_pricing && priceTiers.length > 0
-                          ? priceTiers.find(tier => quantity >= tier.min_quantity)?.unit_price || product.price
-                          : (product.discounted_price || product.price);
-                        return formatCurrencyI18n(unitPrice * quantity, currency, language);
-                      })()}
-                    </span>
-                  </div>
+                  {/* Total Price with breakdown */}
+                  {(() => {
+                    const basePrice = product.discounted_price || product.price;
+                    let unitPrice = basePrice;
+                    let totalPrice = basePrice * quantity;
+
+                    if (product.has_tiered_pricing && priceTiers.length > 0) {
+                      const sortedTiers = [...priceTiers].sort((a, b) => a.min_quantity - b.min_quantity);
+                      const applicableTier = sortedTiers
+                        .filter(tier => quantity >= tier.min_quantity && (!tier.max_quantity || quantity <= tier.max_quantity))
+                        .pop();
+                      if (applicableTier) {
+                        unitPrice = applicableTier.discounted_unit_price || applicableTier.unit_price;
+                      }
+                      totalPrice = unitPrice * quantity;
+                    }
+
+                    const savings = (basePrice * quantity) - totalPrice;
+                    const showSavings = product.has_tiered_pricing && savings > 0;
+
+                    return (
+                      <Card className="bg-primary/5 border-primary/20">
+                        <CardContent className="pt-6">
+                          <div className="space-y-3">
+                            {/* Unit Price */}
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-muted-foreground">Preço por unidade:</span>
+                              <span className="font-semibold">
+                                {formatCurrencyI18n(unitPrice, currency, language)}
+                              </span>
+                            </div>
+
+                            {/* Quantity */}
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-muted-foreground">Quantidade:</span>
+                              <span className="font-semibold">{quantity} {quantity === 1 ? 'unidade' : 'unidades'}</span>
+                            </div>
+
+                            {/* Savings */}
+                            {showSavings && (
+                              <div className="flex justify-between items-center text-sm pt-2 border-t">
+                                <span className="text-green-600 font-medium">Economia:</span>
+                                <span className="text-green-600 font-bold">
+                                  {formatCurrencyI18n(savings, currency, language)}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Total */}
+                            <div className="flex justify-between items-center pt-3 border-t">
+                              <span className="text-lg font-medium">Total:</span>
+                              <span className="text-2xl font-bold text-primary">
+                                {formatCurrencyI18n(totalPrice, currency, language)}
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
 
                   {/* Add to Cart Button */}
                   <Button
