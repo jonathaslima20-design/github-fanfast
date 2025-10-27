@@ -252,7 +252,7 @@ export default function ProductDetailsPage() {
 
   const totalInCart = getItemQuantity(product.id);
   const isAvailable = product.status === 'disponivel';
-  const hasPrice = product.price && product.price > 0;
+  const hasPrice = (product.price && product.price > 0) || (product.has_tiered_pricing && minimumTieredPrice && minimumTieredPrice > 0);
 
   return (
     <div className="flex-1">
@@ -379,6 +379,7 @@ export default function ProductDetailsPage() {
                   <QuickPurchasePanel
                     product={product}
                     priceTiers={priceTiers}
+                    minimumTieredPrice={minimumTieredPrice}
                     currency={currency}
                     language={language}
                     onAddToCart={handleAddToCart}

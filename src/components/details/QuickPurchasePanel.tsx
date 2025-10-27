@@ -24,6 +24,7 @@ interface DistributionItem {
 interface QuickPurchasePanelProps {
   product: Product;
   priceTiers: PriceTier[];
+  minimumTieredPrice: number | null;
   currency: SupportedCurrency;
   language: SupportedLanguage;
   onAddToCart: (
@@ -35,17 +36,18 @@ interface QuickPurchasePanelProps {
 export default function QuickPurchasePanel({
   product,
   priceTiers,
+  minimumTieredPrice,
   currency,
   language,
   onAddToCart,
 }: QuickPurchasePanelProps) {
-  const [quantity, setQuantity] = useState(1);
+  const minQuantity = priceTiers.length > 0 && product.has_tiered_pricing ? priceTiers[0].min_quantity : 1;
+
+  const [quantity, setQuantity] = useState(minQuantity);
   const [distributionItems, setDistributionItems] = useState<DistributionItem[]>([]);
   const [newItemColor, setNewItemColor] = useState<string | undefined>();
   const [newItemSize, setNewItemSize] = useState<string | undefined>();
   const [newItemQuantity, setNewItemQuantity] = useState(1);
-
-  const minQuantity = priceTiers.length > 0 && product.has_tiered_pricing ? priceTiers[0].min_quantity : 1;
 
   const hasColors = product.colors &&
                    Array.isArray(product.colors) &&
@@ -66,7 +68,13 @@ export default function QuickPurchasePanel({
   const isDistributionOverflow = distributedQuantity > quantity;
 
   const calculatePricing = () => {
-    const basePrice = product.discounted_price || product.price || 0;
+    let effectiveBasePriceForComparison = product.discounted_price || product.price || 0;
+
+    if (product.has_tiered_pricing && effectiveBasePriceForComparison === 0 && minimumTieredPrice) {
+      effectiveBasePriceForComparison = minimumTieredPrice;
+    }
+
+    const basePrice = effectiveBasePriceForComparison;
     let unitPrice = basePrice;
     let totalPrice = basePrice * quantity;
 
@@ -77,7 +85,7 @@ export default function QuickPurchasePanel({
         .pop();
 
       if (applicableTier) {
-        const tierUnitPrice = applicableTier.unit_price ?? product.price ?? basePrice;
+        const tierUnitPrice = applicableTier.unit_price ?? minimumTieredPrice ?? product.price ?? basePrice;
         const tierDiscountedPrice = applicableTier.discounted_unit_price ?? null;
         unitPrice = tierDiscountedPrice ?? tierUnitPrice;
 
@@ -243,10 +251,10 @@ export default function QuickPurchasePanel({
                 }
 
                 const tierTotal = tierPrice * tier.min_quantity;
-                const basePrice = product.discounted_price || product.price || 0;
-                const savings = (basePrice * tier.min_quantity) - tierTotal;
-                const savingsPercent = basePrice > 0
-                  ? Math.round((savings / (basePrice * tier.min_quantity)) * 100)
+                const effectiveBasePrice = product.discounted_price || product.price || minimumTieredPrice || 0;
+                const savings = (effectiveBasePrice * tier.min_quantity) - tierTotal;
+                const savingsPercent = effectiveBasePrice > 0
+                  ? Math.round((savings / (effectiveBasePrice * tier.min_quantity)) * 100)
                   : 0;
 
                 return (
