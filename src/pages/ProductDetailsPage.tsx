@@ -203,6 +203,27 @@ export default function ProductDetailsPage() {
     }
   }, [priceTiers, product?.has_tiered_pricing]);
 
+  useEffect(() => {
+    const hasColors = product?.colors &&
+                     Array.isArray(product.colors) &&
+                     product.colors.length > 0 &&
+                     product.colors.some(color => color && color.trim().length > 0);
+
+    const hasSizes = product?.sizes &&
+                    Array.isArray(product.sizes) &&
+                    product.sizes.length > 0 &&
+                    product.sizes.some(size => size && size.trim().length > 0);
+
+    const hasOptions = hasColors || hasSizes;
+
+    if (hasOptions && quantity > 1) {
+      setDistributionMode(true);
+    } else {
+      setDistributionMode(false);
+      setDistributionItems([]);
+    }
+  }, [quantity, product?.colors, product?.sizes]);
+
   const handleShareClick = async () => {
     const shareUrl = window.location.href;
     const shareTitle = product?.title || 'Produto';
@@ -329,15 +350,6 @@ export default function ProductDetailsPage() {
   const remainingQuantity = quantity - distributedQuantity;
   const isDistributionComplete = distributedQuantity === quantity;
   const isDistributionOverflow = distributedQuantity > quantity;
-
-  useEffect(() => {
-    if (hasOptions && quantity > 1) {
-      setDistributionMode(true);
-    } else {
-      setDistributionMode(false);
-      setDistributionItems([]);
-    }
-  }, [quantity, hasOptions]);
 
   const addDistributionItem = () => {
     if (hasColors && !newItemColor) {
