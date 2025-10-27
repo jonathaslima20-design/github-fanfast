@@ -267,6 +267,19 @@ export default function ProductDetailsPage() {
   const isAvailable = product.status === 'disponivel';
   const hasPrice = product.price && product.price > 0;
 
+  // Debug: Log availability and price status for tiered pricing products
+  if (product.has_tiered_pricing) {
+    console.log('🔍 TIERED PRICING DEBUG:', {
+      has_tiered_pricing: product.has_tiered_pricing,
+      status: product.status,
+      isAvailable,
+      price: product.price,
+      hasPrice,
+      priceTiers: priceTiers.length,
+      loadingTiers
+    });
+  }
+
   // Check if product has color or size options
   const hasColors = product.colors && 
                    Array.isArray(product.colors) && 
@@ -426,7 +439,7 @@ export default function ProductDetailsPage() {
                 <div className="mt-8">
                   {loadingTiers ? (
                     <TieredPricingSkeleton />
-                  ) : priceTiers.length > 0 && (
+                  ) : priceTiers.length > 0 ? (
                     <>
                       <TieredPricingTable
                         tiers={priceTiers}
@@ -437,7 +450,7 @@ export default function ProductDetailsPage() {
                       />
 
                       {/* Add to Cart Button for Tiered Pricing */}
-                      {isAvailable && hasPrice && (
+                      {isAvailable && hasPrice ? (
                         <div className="mt-6 space-y-3">
                           <Button
                             size="lg"
@@ -461,9 +474,9 @@ export default function ProductDetailsPage() {
                             </Button>
                           )}
                         </div>
-                      )}
+                      ) : null}
                     </>
-                  )}
+                  ) : null}
                 </div>
               )}
 
