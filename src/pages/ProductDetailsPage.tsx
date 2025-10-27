@@ -427,13 +427,42 @@ export default function ProductDetailsPage() {
                   {loadingTiers ? (
                     <TieredPricingSkeleton />
                   ) : priceTiers.length > 0 && (
-                    <TieredPricingTable
-                      tiers={priceTiers}
-                      basePrice={product.price || 0}
-                      baseDiscountedPrice={product.discounted_price}
-                      currency={currency}
-                      language={language}
-                    />
+                    <>
+                      <TieredPricingTable
+                        tiers={priceTiers}
+                        basePrice={product.price || 0}
+                        baseDiscountedPrice={product.discounted_price}
+                        currency={currency}
+                        language={language}
+                      />
+
+                      {/* Add to Cart Button for Tiered Pricing */}
+                      {isAvailable && hasPrice && (
+                        <div className="mt-6 space-y-3">
+                          <Button
+                            size="lg"
+                            className="w-full"
+                            onClick={handleAddToCart}
+                          >
+                            <ShoppingCart className="h-5 w-5 mr-2" />
+                            Adicionar ao Carrinho
+                          </Button>
+
+                          {/* Distribution Button - Show only if product has variations */}
+                          {hasOptions && (
+                            <Button
+                              size="lg"
+                              variant="outline"
+                              className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+                              onClick={() => setShowDistributionModal(true)}
+                            >
+                              <Package className="h-5 w-5 mr-2" />
+                              Distribuir Variações com Preço Escalonado
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -540,8 +569,8 @@ export default function ProductDetailsPage() {
                 </div>
               )}
 
-              {/* Add to Cart Button - Always show for available products with price */}
-              {isAvailable && hasPrice && (
+              {/* Add to Cart Button - Only show if product does NOT have tiered pricing */}
+              {isAvailable && hasPrice && !product.has_tiered_pricing && (
                 <div className="mt-8 pt-2 space-y-3">
                   <Button
                     size="lg"
@@ -551,19 +580,6 @@ export default function ProductDetailsPage() {
                     <ShoppingCart className="h-5 w-5 mr-2" />
                     Adicionar ao Carrinho
                   </Button>
-
-                  {/* Distribution Button - Show only if product has tiered pricing AND variations */}
-                  {product.has_tiered_pricing && hasOptions && priceTiers.length > 0 && (
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
-                      onClick={() => setShowDistributionModal(true)}
-                    >
-                      <Plus className="h-5 w-5 mr-2" />
-                      Distribuir Variações com Preço Escalonado
-                    </Button>
-                  )}
                 </div>
               )}
 
