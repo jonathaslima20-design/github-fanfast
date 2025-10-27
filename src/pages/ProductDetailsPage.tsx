@@ -40,6 +40,7 @@ import ContactSidebar from '@/components/details/ContactSidebar';
 import ProductVariantModal from '@/components/product/ProductVariantModal';
 import { ProductDistributionModal } from '@/components/product/ProductDistributionModal';
 import TieredPricingIndicator from '@/components/product/TieredPricingIndicator';
+import TieredPricingTable from '@/components/details/TieredPricingTable';
 import { useTieredPricing } from '@/hooks/useTieredPricing';
 
 export default function ProductDetailsPage() {
@@ -650,6 +651,23 @@ export default function ProductDetailsPage() {
                       />
                     );
                   })()}
+
+                  {/* Tiered Pricing Table */}
+                  {product.has_tiered_pricing && priceTiers.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.1 }}
+                    >
+                      <TieredPricingTable
+                        tiers={priceTiers}
+                        basePrice={product.price}
+                        baseDiscountedPrice={product.discounted_price}
+                        currency={currency}
+                        language={language}
+                      />
+                    </motion.div>
+                  )}
 
                   {/* Quick Tier Selector */}
                   {product.has_tiered_pricing && priceTiers.length > 0 && (
