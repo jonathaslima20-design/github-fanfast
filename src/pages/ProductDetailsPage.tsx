@@ -440,7 +440,7 @@ export default function ProductDetailsPage() {
                   {loadingTiers ? (
                     <TieredPricingSkeleton />
                   ) : priceTiers.length > 0 ? (
-                    <>
+                    <div className="space-y-6">
                       <TieredPricingTable
                         tiers={priceTiers}
                         basePrice={product.price || 0}
@@ -449,33 +449,33 @@ export default function ProductDetailsPage() {
                         language={language}
                       />
 
-                      {/* Add to Cart Button for Tiered Pricing */}
-                      {isAvailable && hasPrice ? (
-                        <div className="mt-6 space-y-3">
+                      {/* Add to Cart Button for Tiered Pricing - ALWAYS show */}
+                      <div className="space-y-3">
+                        <Button
+                          size="lg"
+                          className="w-full"
+                          onClick={handleAddToCart}
+                          disabled={!isAvailable || !hasPrice}
+                        >
+                          <ShoppingCart className="h-5 w-5 mr-2" />
+                          {!isAvailable ? 'Produto Indisponível' : !hasPrice ? 'Sem Preço' : 'Adicionar ao Carrinho'}
+                        </Button>
+
+                        {/* Distribution Button - Show only if product has variations */}
+                        {hasOptions && (
                           <Button
                             size="lg"
-                            className="w-full"
-                            onClick={handleAddToCart}
+                            variant="outline"
+                            className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+                            onClick={() => setShowDistributionModal(true)}
+                            disabled={!isAvailable || !hasPrice}
                           >
-                            <ShoppingCart className="h-5 w-5 mr-2" />
-                            Adicionar ao Carrinho
+                            <Package className="h-5 w-5 mr-2" />
+                            Distribuir Variações com Preço Escalonado
                           </Button>
-
-                          {/* Distribution Button - Show only if product has variations */}
-                          {hasOptions && (
-                            <Button
-                              size="lg"
-                              variant="outline"
-                              className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
-                              onClick={() => setShowDistributionModal(true)}
-                            >
-                              <Package className="h-5 w-5 mr-2" />
-                              Distribuir Variações com Preço Escalonado
-                            </Button>
-                          )}
-                        </div>
-                      ) : null}
-                    </>
+                        )}
+                      </div>
+                    </div>
                   ) : null}
                 </div>
               )}
