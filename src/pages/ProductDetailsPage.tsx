@@ -41,6 +41,7 @@ import ProductVariantModal from '@/components/product/ProductVariantModal';
 import { ProductDistributionModal } from '@/components/product/ProductDistributionModal';
 import TieredPricingIndicator from '@/components/product/TieredPricingIndicator';
 import TieredPricingTable from '@/components/details/TieredPricingTable';
+import QuickPurchasePanel from '@/components/details/QuickPurchasePanel';
 import { useTieredPricing } from '@/hooks/useTieredPricing';
 
 export default function ProductDetailsPage() {
@@ -574,443 +575,49 @@ export default function ProductDetailsPage() {
                 title={product.title}
               />
 
-              {/* Quick Selection Section */}
+              {/* Quick Purchase Panel */}
               {isAvailable && hasPrice && (
-                <div className="mt-8 space-y-6">
-                  {/* Quantity Selector - Only for non-tiered pricing */}
-                  {!product.has_tiered_pricing && (
-                    <Card>
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-sm">Quantidade</CardTitle>
-                        <CardDescription className="text-xs">Selecione a quantidade desejada</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center gap-3 justify-center">
-                          <Button
-                            size="lg"
-                            variant="outline"
-                            onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                            disabled={quantity <= 1}
-                          >
-                            <Minus className="h-5 w-5" />
-                          </Button>
-                          <span className="text-2xl font-semibold w-16 text-center">
-                            {quantity}
-                          </span>
-                          <Button
-                            size="lg"
-                            variant="outline"
-                            onClick={() => setQuantity(quantity + 1)}
-                          >
-                            <Plus className="h-5 w-5" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                <div className="mt-8">
+                  <QuickPurchasePanel
+                    product={product}
+                    priceTiers={priceTiers}
+                    currency={currency}
+                    language={language}
+                    onAddToCart={(qty, distItems) => {
+                      const unitPrice = product.has_tiered_pricing && priceTiers.length > 0
+                        ? priceTiers.find(tier => qty >= tier.min_quantity)?.unit_price || product.price
+                        : undefined;
 
-                  {/* Tiered Pricing Indicator */}
-                  {product.has_tiered_pricing && priceTiers.length > 0 && (() => {
-                    const pricingInfo = (() => {
-                      const basePrice = product.discounted_price || product.price;
-                      const sortedTiers = [...priceTiers].sort((a, b) => a.min_quantity - b.min_quantity);
-                      const applicableTier = sortedTiers
-                        .filter(tier => quantity >= tier.min_quantity && (!tier.max_quantity || quantity <= tier.max_quantity))
-                        .pop();
-                      const unitPrice = applicableTier
-                        ? (applicableTier.discounted_unit_price || applicableTier.unit_price)
-                        : basePrice;
-                      const totalPrice = unitPrice * quantity;
-                      const baseTotalPrice = basePrice * quantity;
-                      const savings = baseTotalPrice - totalPrice;
-                      const nextTier = sortedTiers.find(tier => tier.min_quantity > quantity) || null;
-                      let nextTierSavings = 0;
-                      if (nextTier) {
-                        const nextTierUnitPrice = nextTier.discounted_unit_price || nextTier.unit_price;
-                        const nextTierTotalPrice = nextTierUnitPrice * nextTier.min_quantity;
-                        const baseTotalAtNextTier = basePrice * nextTier.min_quantity;
-                        nextTierSavings = baseTotalAtNextTier - nextTierTotalPrice;
+                      if (distItems.length > 0) {
+                        distItems.forEach(item => {
+                          addToCart(product, item.color, item.size, item.quantity, unitPrice);
+                        });
+                        toast.success(`${qty} ${qty === 1 ? 'item adicionado' : 'itens adicionados'} ao carrinho`);
+                      } else {
+                        addToCart(product, undefined, undefined, qty, unitPrice);
+                        toast.success(`${qty} ${qty === 1 ? 'item adicionado' : 'itens adicionados'} ao carrinho`);
                       }
-                      return {
-                        unitPrice,
-                        totalPrice,
-                        savings,
-                        nextTier: nextTier ? { quantity: nextTier.min_quantity } : null,
-                        nextTierSavings
-                      };
-                    })();
-
-                    return (
-                      <TieredPricingIndicator
-                        currentQuantity={quantity}
-                        nextTierQuantity={pricingInfo.nextTier?.quantity || 0}
-                        nextTierSavings={pricingInfo.nextTierSavings}
-                        appliedTierSavings={pricingInfo.savings}
-                        currency={currency}
-                        language={language}
-                      />
-                    );
-                  })()}
-
-                  {/* Tiered Pricing Table */}
-                  {product.has_tiered_pricing && priceTiers.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.4, delay: 0.1 }}
-                    >
-                      <TieredPricingTable
-                        tiers={priceTiers}
-                        basePrice={product.price}
-                        baseDiscountedPrice={product.discounted_price}
-                        currency={currency}
-                        language={language}
-                      />
-                    </motion.div>
-                  )}
-
-                  {/* Quick Tier Selector */}
-                  {product.has_tiered_pricing && priceTiers.length > 0 && (
-                    <Card className="border-blue-200 dark:border-blue-800">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-sm flex items-center gap-2">
-                          <TrendingDown className="h-4 w-4 text-blue-600" />
-                          Seleção Rápida de Quantidade
-                        </CardTitle>
-                        <CardDescription className="text-xs">
-                          Clique para selecionar uma quantidade e ver o preço
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-2 gap-2">
-                          {priceTiers.slice(0, 4).map((tier) => {
-                            const tierPrice = tier.discounted_unit_price || tier.unit_price;
-                            const tierTotal = tierPrice * tier.min_quantity;
-                            const basePrice = product.discounted_price || product.price;
-                            const savings = (basePrice * tier.min_quantity) - tierTotal;
-                            const savingsPercent = Math.round((savings / (basePrice * tier.min_quantity)) * 100);
-
-                            return (
-                              <Button
-                                key={tier.id}
-                                variant={quantity === tier.min_quantity ? "default" : "outline"}
-                                className="h-auto py-3 px-3 flex flex-col items-start"
-                                onClick={() => setQuantity(tier.min_quantity)}
-                              >
-                                <div className="text-sm font-semibold">{tier.min_quantity} {tier.min_quantity === 1 ? 'Unidade' : 'Unidades'}</div>
-                                <div className="text-sm text-muted-foreground">
-                                  {formatCurrencyI18n(tierPrice, currency, language)}/un
-                                </div>
-                                {savingsPercent > 0 && (
-                                  <div className="text-xs text-green-600 font-medium">
-                                    -{savingsPercent}%
-                                  </div>
-                                )}
-                              </Button>
-                            );
-                          })}
-                        </div>
-
-                        {/* Custom Quantity Input for tiered pricing */}
-                        <div className="mt-4 pt-4 border-t">
-                          <Label className="text-xs font-medium mb-2 block">Quantidade Personalizada</Label>
-                          <div className="flex items-center gap-3 justify-center">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setQuantity(Math.max(minQuantity, quantity - 1))}
-                              disabled={quantity <= minQuantity}
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                            <span className="text-lg font-semibold w-12 text-center">
-                              {quantity}
-                            </span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setQuantity(quantity + 1)}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          {quantity < minQuantity && (
-                            <p className="text-xs text-amber-600 mt-2 text-center">
-                              Quantidade mínima: {minQuantity}
-                            </p>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Distribution Section */}
-                  {distributionMode && hasOptions && (
-                    <Card className="border-orange-200 dark:border-orange-800">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-sm">Distribuir por Cor e Tamanho</CardTitle>
-                        <CardDescription className="text-xs">
-                          Distribua as {quantity} unidades entre cores e tamanhos
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Distribuído</span>
-                            <span className={isDistributionOverflow ? 'text-destructive font-bold' : isDistributionComplete ? 'text-green-600 font-bold' : 'font-medium'}>
-                              {distributedQuantity} / {quantity}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Restante</span>
-                            <span className={remainingQuantity < 0 ? 'text-destructive font-bold' : remainingQuantity === 0 ? 'text-green-600 font-bold' : 'font-medium'}>
-                              {remainingQuantity}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 p-3 bg-muted/50 rounded-lg">
-                          <Label className="text-xs font-medium">Adicionar Variação</Label>
-                          <div className="grid gap-2">
-                            {hasColors && (
-                              <Select value={newItemColor || ''} onValueChange={(value) => setNewItemColor(value || undefined)}>
-                                <SelectTrigger className="h-9">
-                                  <SelectValue placeholder="Cor">
-                                    {newItemColor && (
-                                      <div className="flex items-center gap-2">
-                                        <div
-                                          className="w-3 h-3 rounded-full border border-gray-300"
-                                          style={{ backgroundColor: getColorValue(newItemColor) }}
-                                        />
-                                        <span className="capitalize text-xs">{newItemColor}</span>
-                                      </div>
-                                    )}
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {product.colors!.map((color: string) => (
-                                    <SelectItem key={color} value={color}>
-                                      <div className="flex items-center gap-2">
-                                        <div
-                                          className="w-3 h-3 rounded-full border border-gray-300"
-                                          style={{ backgroundColor: getColorValue(color) }}
-                                        />
-                                        <span className="capitalize text-xs">{color}</span>
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )}
-
-                            {hasSizes && (
-                              <Select value={newItemSize || ''} onValueChange={(value) => setNewItemSize(value || undefined)}>
-                                <SelectTrigger className="h-9">
-                                  <SelectValue placeholder="Tamanho">
-                                    {newItemSize && (
-                                      <span className="text-xs">{newItemSize}</span>
-                                    )}
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {product.sizes!.map((size: string) => (
-                                    <SelectItem key={size} value={size}>
-                                      <span className="text-xs">{size}</span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )}
-
-                            <div className="flex gap-2">
-                              <div className="flex-1 flex items-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-9 w-9 p-0"
-                                  onClick={() => setNewItemQuantity(Math.max(1, newItemQuantity - 1))}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <span className="text-sm font-medium w-8 text-center">{newItemQuantity}</span>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-9 w-9 p-0"
-                                  onClick={() => setNewItemQuantity(newItemQuantity + 1)}
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={addDistributionItem}
-                                disabled={remainingQuantity <= 0 || (hasColors && !newItemColor) || (hasSizes && !newItemSize)}
-                                className="h-9"
-                              >
-                                <Plus className="h-3 w-3 mr-1" />
-                                Adicionar
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {distributionItems.length > 0 && (
-                          <div className="space-y-2 max-h-48 overflow-y-auto">
-                            {distributionItems.map((item) => (
-                              <div key={item.id} className="flex items-center gap-2 p-2 bg-background border rounded-lg">
-                                <div className="flex-1 flex items-center gap-2 text-xs">
-                                  {item.color && (
-                                    <div className="flex items-center gap-1">
-                                      <Palette className="h-3 w-3 text-muted-foreground" />
-                                      <div
-                                        className="w-3 h-3 rounded-full border border-gray-300"
-                                        style={{ backgroundColor: getColorValue(item.color) }}
-                                      />
-                                      <span className="capitalize">{item.color}</span>
-                                    </div>
-                                  )}
-                                  {item.size && (
-                                    <div className="flex items-center gap-1">
-                                      <Ruler className="h-3 w-3 text-muted-foreground" />
-                                      <span>{item.size}</span>
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 w-7 p-0"
-                                    onClick={() => updateDistributionItemQuantity(item.id, item.quantity - 1)}
-                                  >
-                                    <Minus className="h-3 w-3" />
-                                  </Button>
-                                  <Badge variant="secondary" className="text-xs min-w-[2rem] justify-center">{item.quantity}</Badge>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 w-7 p-0"
-                                    onClick={() => updateDistributionItemQuantity(item.id, item.quantity + 1)}
-                                  >
-                                    <Plus className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 w-7 p-0 text-destructive"
-                                    onClick={() => removeDistributionItem(item.id)}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {!isDistributionComplete && distributionItems.length > 0 && (
-                          <div className="p-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                            <p className="text-xs text-amber-800 dark:text-amber-200">
-                              Você ainda precisa distribuir {remainingQuantity} {remainingQuantity === 1 ? 'unidade' : 'unidades'}
-                            </p>
-                          </div>
-                        )}
-
-                        {isDistributionOverflow && (
-                          <div className="p-2 bg-destructive/10 border border-destructive/20 rounded-lg">
-                            <p className="text-xs text-destructive">
-                              Você distribuiu {Math.abs(remainingQuantity)} {Math.abs(remainingQuantity) === 1 ? 'unidade' : 'unidades'} a mais que o total
-                            </p>
-                          </div>
-                        )}
-
-                        {isDistributionComplete && (
-                          <div className="p-2 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
-                            <p className="text-xs text-green-800 dark:text-green-200 flex items-center gap-1">
-                              <Badge className="bg-green-600 text-white h-4 w-4 p-0 flex items-center justify-center">
-                                ✓
-                              </Badge>
-                              Distribuição completa!
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Total Price with breakdown */}
-                  {(() => {
-                    const basePrice = product.discounted_price || product.price;
-                    let unitPrice = basePrice;
-                    let totalPrice = basePrice * quantity;
-
-                    if (product.has_tiered_pricing && priceTiers.length > 0) {
-                      const sortedTiers = [...priceTiers].sort((a, b) => a.min_quantity - b.min_quantity);
-                      const applicableTier = sortedTiers
-                        .filter(tier => quantity >= tier.min_quantity && (!tier.max_quantity || quantity <= tier.max_quantity))
-                        .pop();
-                      if (applicableTier) {
-                        unitPrice = applicableTier.discounted_unit_price || applicableTier.unit_price;
-                      }
-                      totalPrice = unitPrice * quantity;
-                    }
-
-                    const savings = (basePrice * quantity) - totalPrice;
-                    const showSavings = product.has_tiered_pricing && savings > 0;
-
-                    return (
-                      <Card className="bg-primary/5 border-primary/20">
-                        <CardContent className="pt-6">
-                          <div className="space-y-3">
-                            {/* Unit Price */}
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-muted-foreground">Preço por unidade:</span>
-                              <span className="font-semibold">
-                                {formatCurrencyI18n(unitPrice, currency, language)}
-                              </span>
-                            </div>
-
-                            {/* Quantity */}
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-muted-foreground">Quantidade:</span>
-                              <span className="font-semibold">{quantity} {quantity === 1 ? 'unidade' : 'unidades'}</span>
-                            </div>
-
-                            {/* Savings */}
-                            {showSavings && (
-                              <div className="flex justify-between items-center text-sm pt-2 border-t">
-                                <span className="text-green-600 font-medium">Economia:</span>
-                                <span className="text-green-600 font-bold">
-                                  {formatCurrencyI18n(savings, currency, language)}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Total */}
-                            <div className="flex justify-between items-center pt-3 border-t">
-                              <span className="text-lg font-medium">Total:</span>
-                              <span className="text-2xl font-bold text-primary">
-                                {formatCurrencyI18n(totalPrice, currency, language)}
-                              </span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })()}
-
-                  {/* Add to Cart Button */}
-                  <Button
-                    size="lg"
-                    className="w-full"
-                    onClick={handleAddToCart}
-                    disabled={distributionMode ? !isDistributionComplete : false}
-                  >
-                    <ShoppingCart className="h-5 w-5 mr-2" />
-                    Adicionar {quantity > 1 ? `(${quantity})` : ''}
-                  </Button>
+                    }}
+                  />
                 </div>
+              )}
+
+              {/* Tiered Pricing Table */}
+              {isAvailable && hasPrice && product.has_tiered_pricing && priceTiers.length > 0 && (
+                <motion.div
+                  className="mt-6"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: 0.1 }}
+                >
+                  <TieredPricingTable
+                    tiers={priceTiers}
+                    basePrice={product.price}
+                    baseDiscountedPrice={product.discounted_price}
+                    currency={currency}
+                    language={language}
+                  />
+                </motion.div>
               )}
 
               {/* Product Variants Display - Removed, now in selection section */}
