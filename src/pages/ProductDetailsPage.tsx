@@ -79,13 +79,6 @@ export default function ProductDetailsPage() {
   );
 
   useEffect(() => {
-    if (priceTiers.length > 0 && product?.has_tiered_pricing) {
-      const minTierQuantity = priceTiers[0].min_quantity;
-      setQuantity(minTierQuantity);
-    }
-  }, [priceTiers, product?.has_tiered_pricing]);
-
-  useEffect(() => {
     setShareSupported(!!navigator.share && window.isSecureContext);
 
     const fetchProductDetails = async () => {
@@ -202,6 +195,13 @@ export default function ProductDetailsPage() {
       }
     };
   }, [productId]);
+
+  useEffect(() => {
+    if (priceTiers.length > 0 && product?.has_tiered_pricing && quantity === 1) {
+      const minTierQuantity = priceTiers[0].min_quantity;
+      setQuantity(minTierQuantity);
+    }
+  }, [priceTiers, product?.has_tiered_pricing]);
 
   const handleShareClick = async () => {
     const shareUrl = window.location.href;
