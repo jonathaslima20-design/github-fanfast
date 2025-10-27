@@ -66,7 +66,7 @@ export default function QuickPurchasePanel({
   const isDistributionOverflow = distributedQuantity > quantity;
 
   const calculatePricing = () => {
-    const basePrice = product.discounted_price || product.price;
+    const basePrice = product.discounted_price || product.price || 0;
     let unitPrice = basePrice;
     let totalPrice = basePrice * quantity;
 
@@ -75,8 +75,16 @@ export default function QuickPurchasePanel({
       const applicableTier = sortedTiers
         .filter(tier => quantity >= tier.min_quantity && (!tier.max_quantity || quantity <= tier.max_quantity))
         .pop();
+
       if (applicableTier) {
-        unitPrice = applicableTier.discounted_unit_price || applicableTier.unit_price;
+        const tierUnitPrice = applicableTier.unit_price ?? product.price ?? basePrice;
+        const tierDiscountedPrice = applicableTier.discounted_unit_price ?? null;
+        unitPrice = tierDiscountedPrice ?? tierUnitPrice;
+
+        if (unitPrice <= 0) {
+          console.warn('Invalid unit price calculated, using base price', { applicableTier, unitPrice });
+          unitPrice = basePrice;
+        }
       }
       totalPrice = unitPrice * quantity;
     }
@@ -225,11 +233,21 @@ export default function QuickPurchasePanel({
           <CardContent>
             <div className="grid grid-cols-2 gap-2">
               {priceTiers.slice(0, 4).map((tier) => {
-                const tierPrice = tier.discounted_unit_price || tier.unit_price;
+                const tierUnitPrice = tier.unit_price ?? product.price ?? 0;
+                const tierDiscountedPrice = tier.discounted_unit_price ?? null;
+                const tierPrice = tierDiscountedPrice ?? tierUnitPrice;
+
+                if (tierPrice <= 0) {
+                  console.warn('Invalid tier price detected:', { tier, tierPrice });
+                  return null;
+                }
+
                 const tierTotal = tierPrice * tier.min_quantity;
-                const basePrice = product.discounted_price || product.price;
+                const basePrice = product.discounted_price || product.price || 0;
                 const savings = (basePrice * tier.min_quantity) - tierTotal;
-                const savingsPercent = Math.round((savings / (basePrice * tier.min_quantity)) * 100);
+                const savingsPercent = basePrice > 0
+                  ? Math.round((savings / (basePrice * tier.min_quantity)) * 100)
+                  : 0;
 
                 return (
                   <Button
