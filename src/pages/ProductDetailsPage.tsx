@@ -9,10 +9,23 @@ import {
   ShoppingCart,
   Plus,
   Minus,
-  Package
+  Package,
+  TrendingDown,
+  Trash2,
+  Palette,
+  Ruler
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency, getColorValue } from '@/lib/utils';
 import { loadTrackingSettings, injectMetaPixel, injectGoogleAnalytics, trackView } from '@/lib/tracking';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -25,8 +38,7 @@ import ItemDescription from '@/components/details/ItemDescription';
 import ContactSidebar from '@/components/details/ContactSidebar';
 import ProductVariantModal from '@/components/product/ProductVariantModal';
 import { ProductDistributionModal } from '@/components/product/ProductDistributionModal';
-import TieredPricingTable from '@/components/details/TieredPricingTable';
-import TieredPricingSkeleton from '@/components/details/TieredPricingSkeleton';
+import TieredPricingIndicator from '@/components/product/TieredPricingIndicator';
 import { useTieredPricing } from '@/hooks/useTieredPricing';
 
 export default function ProductDetailsPage() {
@@ -38,6 +50,19 @@ export default function ProductDetailsPage() {
   const [shareSupported, setShareSupported] = useState(false);
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [showDistributionModal, setShowDistributionModal] = useState(false);
+  const [quantity, setQuantity] = useState(1);
+  const [selectedColor, setSelectedColor] = useState<string | undefined>();
+  const [selectedSize, setSelectedSize] = useState<string | undefined>();
+  const [distributionMode, setDistributionMode] = useState(false);
+  const [distributionItems, setDistributionItems] = useState<Array<{
+    id: string;
+    color?: string;
+    size?: string;
+    quantity: number;
+  }>>([]);
+  const [newItemColor, setNewItemColor] = useState<string | undefined>();
+  const [newItemSize, setNewItemSize] = useState<string | undefined>();
+  const [newItemQuantity, setNewItemQuantity] = useState(1);
   const { theme } = useTheme();
   const [language, setLanguage] = useState<SupportedLanguage>('pt-BR');
   const [currency, setCurrency] = useState<SupportedCurrency>('BRL');
@@ -52,6 +77,13 @@ export default function ProductDetailsPage() {
     product?.discounted_price,
     product?.has_tiered_pricing
   );
+
+  useEffect(() => {
+    if (priceTiers.length > 0 && product?.has_tiered_pricing) {
+      const minTierQuantity = priceTiers[0].min_quantity;
+      setQuantity(minTierQuantity);
+    }
+  }, [priceTiers, product?.has_tiered_pricing]);
 
   useEffect(() => {
     setShareSupported(!!navigator.share && window.isSecureContext);
@@ -293,17 +325,107 @@ export default function ProductDetailsPage() {
                   
   const hasOptions = hasColors || hasSizes;
 
-  const handleAddToCart = () => {
-    if (!isAvailable || !hasPrice) return;
+  const distributedQuantity = distributionItems.reduce((sum, item) => sum + item.quantity, 0);
+  const remainingQuantity = quantity - distributedQuantity;
+  const isDistributionComplete = distributedQuantity === quantity;
+  const isDistributionOverflow = distributedQuantity > quantity;
 
-    // If product has options (colors/sizes) OR tiered pricing, show variant modal
-    if (hasOptions || product.has_tiered_pricing) {
-      setShowVariantModal(true);
+  useEffect(() => {
+    if (hasOptions && quantity > 1) {
+      setDistributionMode(true);
+    } else {
+      setDistributionMode(false);
+      setDistributionItems([]);
+    }
+  }, [quantity, hasOptions]);
+
+  const addDistributionItem = () => {
+    if (hasColors && !newItemColor) {
+      toast.error('Selecione uma cor');
+      return;
+    }
+    if (hasSizes && !newItemSize) {
+      toast.error('Selecione um tamanho');
+      return;
+    }
+    if (newItemQuantity <= 0) {
+      toast.error('Quantidade deve ser maior que zero');
+      return;
+    }
+    if (distributedQuantity + newItemQuantity > quantity) {
+      toast.error(`Quantidade excede o total. Restante: ${remainingQuantity}`);
       return;
     }
 
-    // For simple products without options or tiered pricing, add directly to cart
-    addToCart(product);
+    const isDuplicate = distributionItems.some(
+      item => item.color === newItemColor && item.size === newItemSize
+    );
+
+    if (isDuplicate) {
+      toast.error('Esta combinação de cor e tamanho já foi adicionada');
+      return;
+    }
+
+    const newItem = {
+      id: `${Date.now()}-${Math.random()}`,
+      color: hasColors ? newItemColor : undefined,
+      size: hasSizes ? newItemSize : undefined,
+      quantity: newItemQuantity,
+    };
+
+    setDistributionItems([...distributionItems, newItem]);
+    setNewItemColor(undefined);
+    setNewItemSize(undefined);
+    setNewItemQuantity(1);
+  };
+
+  const removeDistributionItem = (id: string) => {
+    setDistributionItems(distributionItems.filter(item => item.id !== id));
+  };
+
+  const updateDistributionItemQuantity = (id: string, newQty: number) => {
+    if (newQty <= 0) {
+      removeDistributionItem(id);
+      return;
+    }
+
+    setDistributionItems(distributionItems.map(item =>
+      item.id === id ? { ...item, quantity: newQty } : item
+    ));
+  };
+
+  const handleAddToCart = () => {
+    if (!isAvailable || !hasPrice) return;
+
+    const unitPrice = product.has_tiered_pricing && priceTiers.length > 0
+      ? priceTiers.find(tier => quantity >= tier.min_quantity)?.unit_price || product.price
+      : undefined;
+
+    if (distributionMode && hasOptions) {
+      if (!isDistributionComplete) {
+        toast.error(`Distribua todas as ${quantity} unidades. Restante: ${remainingQuantity}`);
+        return;
+      }
+
+      if (distributionItems.length === 0) {
+        toast.error('Adicione pelo menos uma variação');
+        return;
+      }
+
+      distributionItems.forEach(item => {
+        addToCart(product, item.color, item.size, item.quantity, unitPrice);
+      });
+
+      toast.success(`${quantity} ${quantity === 1 ? 'item adicionado' : 'itens adicionados'} ao carrinho`);
+    } else {
+      addToCart(product, undefined, undefined, quantity, unitPrice);
+      toast.success(`${quantity} ${quantity === 1 ? 'item adicionado' : 'itens adicionados'} ao carrinho`);
+    }
+
+    setQuantity(product.has_tiered_pricing && priceTiers.length > 0 ? priceTiers[0].min_quantity : 1);
+    setDistributionItems([]);
+    setSelectedColor(undefined);
+    setSelectedSize(undefined);
   };
 
   return (
@@ -434,54 +556,277 @@ export default function ProductDetailsPage() {
                 title={product.title}
               />
 
-              {/* Tiered Pricing Table - Moved right after gallery */}
-              {product.has_tiered_pricing && (
-                <div className="mt-8">
-                  {loadingTiers ? (
-                    <TieredPricingSkeleton />
-                  ) : priceTiers.length > 0 ? (
-                    <div className="space-y-6">
-                      <TieredPricingTable
-                        tiers={priceTiers}
-                        basePrice={product.price || 0}
-                        baseDiscountedPrice={product.discounted_price}
-                        currency={currency}
-                        language={language}
-                      />
+              {/* Quick Selection Section */}
+              {isAvailable && hasPrice && (
+                <div className="mt-8 space-y-6">
+                  {/* Quick Tier Selector */}
+                  {product.has_tiered_pricing && priceTiers.length > 0 && (
+                    <Card className="border-blue-200 dark:border-blue-800">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <TrendingDown className="h-4 w-4 text-blue-600" />
+                          Seleção Rápida de Quantidade
+                        </CardTitle>
+                        <CardDescription className="text-xs">
+                          Clique para selecionar uma quantidade e ver o preço
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 gap-2">
+                          {priceTiers.slice(0, 4).map((tier) => {
+                            const tierPrice = tier.discounted_unit_price || tier.unit_price;
+                            const tierTotal = tierPrice * tier.min_quantity;
+                            const basePrice = product.discounted_price || product.price;
+                            const savings = (basePrice * tier.min_quantity) - tierTotal;
+                            const savingsPercent = Math.round((savings / (basePrice * tier.min_quantity)) * 100);
 
-                      {/* Add to Cart Button for Tiered Pricing - ALWAYS show */}
-                      <div className="space-y-3">
-                        <Button
-                          size="lg"
-                          className="w-full"
-                          onClick={handleAddToCart}
-                          disabled={!isAvailable || !hasPrice}
-                        >
-                          <ShoppingCart className="h-5 w-5 mr-2" />
-                          {!isAvailable ? 'Produto Indisponível' : !hasPrice ? 'Sem Preço' : 'Adicionar ao Carrinho'}
-                        </Button>
+                            return (
+                              <Button
+                                key={tier.id}
+                                variant={quantity === tier.min_quantity ? "default" : "outline"}
+                                className="h-auto py-3 px-3 flex flex-col items-start"
+                                onClick={() => setQuantity(tier.min_quantity)}
+                              >
+                                <div className="text-sm font-semibold">{tier.min_quantity} {tier.min_quantity === 1 ? 'Unidade' : 'Unidades'}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {formatCurrencyI18n(tierPrice, currency, language)}/un
+                                </div>
+                                {savingsPercent > 0 && (
+                                  <div className="text-xs text-green-600 font-medium">
+                                    -{savingsPercent}%
+                                  </div>
+                                )}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
-                        {/* Distribution Button - Show only if product has variations */}
-                        {hasOptions && (
-                          <Button
-                            size="lg"
-                            variant="outline"
-                            className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
-                            onClick={() => setShowDistributionModal(true)}
-                            disabled={!isAvailable || !hasPrice}
-                          >
-                            <Package className="h-5 w-5 mr-2" />
-                            Distribuir Variações com Preço Escalonado
-                          </Button>
+                  {/* Distribution Section */}
+                  {distributionMode && hasOptions && (
+                    <Card className="border-orange-200 dark:border-orange-800">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm">Distribuir por Cor e Tamanho</CardTitle>
+                        <CardDescription className="text-xs">
+                          Distribua as {quantity} unidades entre cores e tamanhos
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Distribuído</span>
+                            <span className={isDistributionOverflow ? 'text-destructive font-bold' : isDistributionComplete ? 'text-green-600 font-bold' : 'font-medium'}>
+                              {distributedQuantity} / {quantity}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Restante</span>
+                            <span className={remainingQuantity < 0 ? 'text-destructive font-bold' : remainingQuantity === 0 ? 'text-green-600 font-bold' : 'font-medium'}>
+                              {remainingQuantity}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 p-3 bg-muted/50 rounded-lg">
+                          <Label className="text-xs font-medium">Adicionar Variação</Label>
+                          <div className="grid gap-2">
+                            {hasColors && (
+                              <Select value={newItemColor || ''} onValueChange={(value) => setNewItemColor(value || undefined)}>
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Cor">
+                                    {newItemColor && (
+                                      <div className="flex items-center gap-2">
+                                        <div
+                                          className="w-3 h-3 rounded-full border border-gray-300"
+                                          style={{ backgroundColor: getColorValue(newItemColor) }}
+                                        />
+                                        <span className="capitalize text-xs">{newItemColor}</span>
+                                      </div>
+                                    )}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {product.colors!.map((color: string) => (
+                                    <SelectItem key={color} value={color}>
+                                      <div className="flex items-center gap-2">
+                                        <div
+                                          className="w-3 h-3 rounded-full border border-gray-300"
+                                          style={{ backgroundColor: getColorValue(color) }}
+                                        />
+                                        <span className="capitalize text-xs">{color}</span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+
+                            {hasSizes && (
+                              <Select value={newItemSize || ''} onValueChange={(value) => setNewItemSize(value || undefined)}>
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Tamanho">
+                                    {newItemSize && (
+                                      <span className="text-xs">{newItemSize}</span>
+                                    )}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {product.sizes!.map((size: string) => (
+                                    <SelectItem key={size} value={size}>
+                                      <span className="text-xs">{size}</span>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+
+                            <div className="flex gap-2">
+                              <div className="flex-1 flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-9 w-9 p-0"
+                                  onClick={() => setNewItemQuantity(Math.max(1, newItemQuantity - 1))}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="text-sm font-medium w-8 text-center">{newItemQuantity}</span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-9 w-9 p-0"
+                                  onClick={() => setNewItemQuantity(newItemQuantity + 1)}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={addDistributionItem}
+                                disabled={remainingQuantity <= 0 || (hasColors && !newItemColor) || (hasSizes && !newItemSize)}
+                                className="h-9"
+                              >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Adicionar
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {distributionItems.length > 0 && (
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {distributionItems.map((item) => (
+                              <div key={item.id} className="flex items-center gap-2 p-2 bg-background border rounded-lg">
+                                <div className="flex-1 flex items-center gap-2 text-xs">
+                                  {item.color && (
+                                    <div className="flex items-center gap-1">
+                                      <Palette className="h-3 w-3 text-muted-foreground" />
+                                      <div
+                                        className="w-3 h-3 rounded-full border border-gray-300"
+                                        style={{ backgroundColor: getColorValue(item.color) }}
+                                      />
+                                      <span className="capitalize">{item.color}</span>
+                                    </div>
+                                  )}
+                                  {item.size && (
+                                    <div className="flex items-center gap-1">
+                                      <Ruler className="h-3 w-3 text-muted-foreground" />
+                                      <span>{item.size}</span>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 w-7 p-0"
+                                    onClick={() => updateDistributionItemQuantity(item.id, item.quantity - 1)}
+                                  >
+                                    <Minus className="h-3 w-3" />
+                                  </Button>
+                                  <Badge variant="secondary" className="text-xs min-w-[2rem] justify-center">{item.quantity}</Badge>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 w-7 p-0"
+                                    onClick={() => updateDistributionItemQuantity(item.id, item.quantity + 1)}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-destructive"
+                                    onClick={() => removeDistributionItem(item.id)}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
-                      </div>
-                    </div>
-                  ) : null}
+
+                        {!isDistributionComplete && distributionItems.length > 0 && (
+                          <div className="p-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                            <p className="text-xs text-amber-800 dark:text-amber-200">
+                              Você ainda precisa distribuir {remainingQuantity} {remainingQuantity === 1 ? 'unidade' : 'unidades'}
+                            </p>
+                          </div>
+                        )}
+
+                        {isDistributionOverflow && (
+                          <div className="p-2 bg-destructive/10 border border-destructive/20 rounded-lg">
+                            <p className="text-xs text-destructive">
+                              Você distribuiu {Math.abs(remainingQuantity)} {Math.abs(remainingQuantity) === 1 ? 'unidade' : 'unidades'} a mais que o total
+                            </p>
+                          </div>
+                        )}
+
+                        {isDistributionComplete && (
+                          <div className="p-2 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
+                            <p className="text-xs text-green-800 dark:text-green-200 flex items-center gap-1">
+                              <Badge className="bg-green-600 text-white h-4 w-4 p-0 flex items-center justify-center">
+                                ✓
+                              </Badge>
+                              Distribuição completa!
+                            </p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Total Price */}
+                  <div className="flex justify-between items-center p-4 bg-muted rounded-lg">
+                    <span className="text-lg font-medium">Total:</span>
+                    <span className="text-2xl font-bold text-primary">
+                      {(() => {
+                        const unitPrice = product.has_tiered_pricing && priceTiers.length > 0
+                          ? priceTiers.find(tier => quantity >= tier.min_quantity)?.unit_price || product.price
+                          : (product.discounted_price || product.price);
+                        return formatCurrencyI18n(unitPrice * quantity, currency, language);
+                      })()}
+                    </span>
+                  </div>
+
+                  {/* Add to Cart Button */}
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={handleAddToCart}
+                    disabled={distributionMode ? !isDistributionComplete : false}
+                  >
+                    <ShoppingCart className="h-5 w-5 mr-2" />
+                    Adicionar {quantity > 1 ? `(${quantity})` : ''}
+                  </Button>
                 </div>
               )}
 
-              {/* Product Variants Display */}
-              {hasOptions && (
+              {/* Product Variants Display - Removed, now in selection section */}
+              {false && hasOptions && (
                 <div className="mt-8 space-y-6">
                   {/* Available Colors */}
                   {hasColors && (
@@ -582,19 +927,6 @@ export default function ProductDetailsPage() {
                 </div>
               )}
 
-              {/* Add to Cart Button - Only show if product does NOT have tiered pricing */}
-              {isAvailable && hasPrice && !product.has_tiered_pricing && (
-                <div className="mt-8 pt-2 space-y-3">
-                  <Button
-                    size="lg"
-                    className="w-full"
-                    onClick={handleAddToCart}
-                  >
-                    <ShoppingCart className="h-5 w-5 mr-2" />
-                    Adicionar ao Carrinho
-                  </Button>
-                </div>
-              )}
 
               {/* External Checkout Button - Always show if configured */}
               {isAvailable && product.external_checkout_url && (
